@@ -416,29 +416,34 @@ export default function TodayMenu() {
         </div>
       )}
 
-      {/* Floating Bottom Cart Bar */}
+      {/* Floating Bottom Cart Bar (Responsive for Mobile & Desktop) */}
       {totalCount > 0 && (
-        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-40">
-          <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-amber-500/40 p-3.5 rounded-2xl shadow-2xl flex items-center justify-between backdrop-blur-md">
-            <div>
-              <div className="text-xs font-semibold text-zinc-200">
-                {totalCount} {totalCount === 1 ? "dish" : "dishes"} selected
-              </div>
-              <div className="text-amber-400 font-bold text-sm">
-                ₹{subtotal} <span className="text-[10px] text-zinc-400 font-normal">+ delivery</span>
-              </div>
+        <div className="fixed bottom-0 left-0 right-0 sm:bottom-6 sm:right-6 sm:left-auto sm:w-96 z-50 p-4 sm:p-0 pointer-events-none">
+          <div className="pointer-events-auto bg-zinc-950/95 backdrop-blur-md border border-amber-500/50 p-3.5 rounded-2xl shadow-[0_10px_30px_rgba(0,0,0,0.8)] flex items-center justify-between transition-all duration-300">
+            <div className="flex flex-col">
+              <span className="text-xs font-semibold text-zinc-100 flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                {totalCount} {totalCount === 1 ? "dish" : "dishes"} in cart
+              </span>
+              <span className="text-amber-400 font-bold text-sm">
+                ₹{subtotal}{" "}
+                <span className="text-[10px] text-zinc-400 font-normal">
+                  + delivery
+                </span>
+              </span>
             </div>
+
             <button
               type="button"
-              onClick={() => setIsCartOpen && setIsCartOpen(true)}
-              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold uppercase tracking-wider transition shadow-md shadow-amber-500/30 flex items-center gap-1.5"
+              onClick={() => setIsCartOpen(true)}
+              className="px-5 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 active:scale-95 text-zinc-950 text-xs font-bold uppercase tracking-wider transition shadow-lg shadow-amber-500/30 flex items-center gap-2 cursor-pointer"
             >
               <span>View Cart</span>
-              <span>→</span>
+              <span className="text-base leading-none">→</span>
             </button>
           </div>
         </div>
       )}
     </section>
   );
-}
+} 
