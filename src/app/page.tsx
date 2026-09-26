@@ -2,6 +2,7 @@ import { BUSINESS_CONFIG } from "@/app/config/business";
 import { getGeneralWhatsAppUrl } from "@/app/utils/whatsapp";
 import TodayMenu from "@/app/components/TodayMenu";
 import PartyOrderForm from "@/app/components/PartyOrderForm";
+import CartModal from "@/app/components/CartModal";
 import {
   Phone,
   Clock,
@@ -228,7 +229,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* LIVE DATE-BASED TODAY'S MENU */}
+      {/* LIVE DATE-BASED TODAY'S MENU (Includes Floating Cart Bar) */}
       <TodayMenu />
 
       {/* PARTY & SPECIAL OCCASION ORDERS */}
@@ -323,7 +324,7 @@ export default function Home() {
       </section>
 
       {/* Footer */}
-      <footer className="mt-auto bg-stone-950 border-t border-stone-900 py-10 pb-24 md:pb-10 text-stone-400 text-xs">
+      <footer className="mt-auto bg-stone-950 border-t border-stone-900 py-10 pb-28 md:pb-10 text-stone-400 text-xs">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex flex-col md:flex-row justify-between items-center gap-4 text-center md:text-left">
           <div>
             <p className="font-serif font-bold text-stone-200 text-sm">
@@ -341,25 +342,8 @@ export default function Home() {
         </div>
       </footer>
 
-      {/* Mobile Sticky CTA Bar */}
-      <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-stone-950/95 backdrop-blur border-t border-stone-800 p-3 flex gap-2">
-        <a
-          href="#todays-menu"
-          className="flex-1 bg-stone-800 hover:bg-stone-700 text-amber-300 text-xs font-semibold py-3 px-4 rounded-xl text-center flex items-center justify-center gap-1.5 border border-stone-700"
-        >
-          <ShoppingBag className="w-4 h-4" />
-          <span>Today&apos;s Menu</span>
-        </a>
-        <a
-          href={getGeneralWhatsAppUrl()}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex-1 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold py-3 px-4 rounded-xl text-center flex items-center justify-center gap-1.5 shadow"
-        >
-          <MessageSquare className="w-4 h-4" />
-          <span>Order on WhatsApp</span>
-        </a>
-      </div>
+      {/* Cart Drawer Slide-Over Modal */}
+      <CartModal />
     </div>
   );
 }
