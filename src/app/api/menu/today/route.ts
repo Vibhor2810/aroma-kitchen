@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { resolveDishImage } from "@/app/utils/dishImages";
-
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 export interface MenuItem {
   id: string;
   category: string;
@@ -60,7 +61,7 @@ export async function GET() {
       });
     }
 
-    const sheetCsvUrl = process.env.GOOGLE_SHEET_CSV_URL;
+    const sheetCsvUrl = process.env.GOOGLE_SHEET_CSV_URL || process.env.GOOGLE_SHEETS_CSV_URL;
 
     if (!sheetCsvUrl) {
       return NextResponse.json({
@@ -74,10 +75,13 @@ export async function GET() {
       });
     }
 
-    const res = await fetch(sheetCsvUrl, { cache: "no-store" });
-    if (!res.ok) {
-      throw new Error(`Google Sheets fetch failed with status: ${res.status}`);
-    }
+    const res = await fetch(sheetCsvUrl, {
+      cache: "no-store",
+      headers: {
+        "Cache-Control": "no-cache, no-store, must-revalidate",
+        Pragma: "no-cache",
+      },
+    });
 
     const csvText = await res.text();
     const rows = parseCSV(csvText);
