@@ -417,7 +417,7 @@ export default function TodayMenu() {
       )}
 
       {/* Floating Bottom Cart Bar */}
-      {totalCount > 0 && (
+      {true && (
         <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-40">
           <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-amber-500/40 p-3.5 rounded-2xl shadow-2xl flex items-center justify-between backdrop-blur-md">
             <div>
