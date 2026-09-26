@@ -1,456 +1,345 @@
 "use client";
 
 import React, { useState } from "react";
-import { useCart } from "../context/CartContext";
-import { BUSINESS_CONFIG } from "../config/business";
+import { useCart } from "@/app/context/CartContext";
 
 export default function CartModal() {
-  const { cart, updateQuantity, removeFromCart, subtotal, totalCount, isCartOpen, setIsCartOpen, clearCart } = useCart();
-  
-  // Steps: 'cart' -> 'time' -> 'details' -> 'summary'
-  const [step, setStep] = useState<"cart" | "time" | "details" | "summary">("cart");
+  const {
+    cart,
+    isCartOpen,
+    setIsCartOpen,
+    updateQuantity,
+    removeFromCart,
+    clearCart,
+    subtotal,
+    deliveryFee,
+    grandTotal,
+  } = useCart();
 
-  // Order Timing
-  const [timingType, setTimingType] = useState<"immediate" | "scheduled">("immediate");
-  const [scheduledDate, setScheduledDate] = useState("");
-  const [scheduledTime, setScheduledTime] = useState("");
-
-  // Customer Details
-  const [customerName, setCustomerName] = useState("");
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const [deliveryAddress, setDeliveryAddress] = useState("");
-  const [specialInstructions, setSpecialInstructions] = useState("");
-
-  // Form Errors
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [deliveryType, setDeliveryType] = useState<"asap" | "scheduled">("asap");
+  const [scheduledTime, setScheduledTime] = useState<string>("");
+  const [customerName, setCustomerName] = useState<string>("");
+  const [customerPhone, setCustomerPhone] = useState<string>("");
+  const [deliveryAddress, setDeliveryAddress] = useState<string>("");
+  const [specialNotes, setSpecialNotes] = useState<string>("");
+  const [validationError, setValidationError] = useState<string | null>(null);
 
   if (!isCartOpen) return null;
 
-  const deliveryCharge = subtotal > 0 ? (subtotal >= 500 ? 0 : 40) : 0;
-  const grandTotal = subtotal + deliveryCharge;
-
-  // Helpers for Scheduled Times
-  const getMinDate = () => {
-    const today = new Date();
-    return today.toISOString().split("T")[0];
-  };
-
-  const validateTiming = () => {
-    if (timingType === "immediate") return true;
-    const errs: Record<string, string> = {};
-    if (!scheduledDate) errs.date = "Please pick a date";
-    if (!scheduledTime) errs.time = "Please pick a preferred delivery time";
-
-    if (scheduledDate && scheduledTime) {
-      const selected = new Date(`${scheduledDate}T${scheduledTime}`);
-      if (selected <= new Date()) {
-        errs.time = "Please choose a future time";
-      }
+  const handleCheckoutWhatsApp = () => {
+    if (cart.length === 0) {
+      setValidationError("Your cart is empty. Please add items to proceed.");
+      return;
     }
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
 
-  const validateDetails = () => {
-    const errs: Record<string, string> = {};
-    if (!customerName.trim()) errs.name = "Name is required";
-    if (!phoneNumber.trim() || phoneNumber.replace(/\D/g, "").length < 10) {
-      errs.phone = "Valid 10-digit phone number is required";
+    if (!customerName.trim() || !customerPhone.trim() || !deliveryAddress.trim()) {
+      setValidationError("Please fill in your name, contact phone number, and delivery address.");
+      return;
     }
-    if (!deliveryAddress.trim()) errs.address = "Delivery address is required";
-    setErrors(errs);
-    return Object.keys(errs).length === 0;
-  };
 
-  const handleProceedFromCart = () => {
-    if (cart.length === 0) return;
-    setStep("time");
-  };
+    if (deliveryType === "scheduled" && !scheduledTime.trim()) {
+      setValidationError("Please specify your desired delivery time.");
+      return;
+    }
 
-  const handleProceedFromTime = () => {
-    if (validateTiming()) setStep("details");
-  };
+    setValidationError(null);
 
-  const handleProceedFromDetails = () => {
-    if (validateDetails()) setStep("summary");
-  };
-
-  const generateWhatsAppMessage = () => {
-    const itemsList = cart
-      .map(
-        (item) =>
-          `• ${item.name} × ${item.quantity} — ₹${item.priceNumeric * item.quantity}`
-      )
+    // Format items list
+    const itemsFormatted = cart
+      .map((item, index) => {
+        const itemLineTotal = (item.priceNumeric || 0) * item.quantity;
+        return `${index + 1}. *${item.name}* x ${item.quantity} = ₹${itemLineTotal}`;
+      })
       .join("\n");
 
-    const orderTimeFormatted =
-      timingType === "immediate"
-        ? "Order Immediately (ASAP)"
-        : `Scheduled: ${scheduledDate} at${scheduledTime}`;
+    const deliveryTimeText =
+      deliveryType === "asap"
+        ? "⚡ As soon as possible (Freshly prepared)"
+        : `🕒 Scheduled for: ${scheduledTime}`;
 
-    const message = [
-      `*Hello Aroma Kitchen!*`,
-      `I would like to place an order.`,
-      ``,
-      `*Customer:* ${customerName.trim()}`,
-      `*WhatsApp:* ${phoneNumber.trim()}`,
-      ``,
-      `*Order Details:*`,
-      itemsList,
-      ``,
-      `*Subtotal:* ₹${subtotal}`,
-      `*Delivery:* ${deliveryCharge === 0 ? "FREE" : `₹${deliveryCharge}`}`,
-      `*Total Amount:* ₹${grandTotal}`,
-      ``,
-      `*Order Time:* ${orderTimeFormatted}`,
-      ``,
-      `*Delivery Address:*`,
-      `${deliveryAddress.trim()}`,
-      specialInstructions.trim() ? `\n*Special Instructions:*\n${specialInstructions.trim()}` : "",
-      ``,
-      `Please confirm my order and share payment details. Thank you!`,
-    ]
-      .filter(Boolean)
-      .join("\n");
+    const deliveryFeeText =
+      deliveryFee === 0 ? "FREE (Order above ₹200)" : `₹${deliveryFee}`;
 
-    const config = BUSINESS_CONFIG as Record<string, unknown>;
-    const phoneSource = 
-      (typeof config.phone === "string" && config.phone) ||
-      (typeof config.whatsapp === "string" && config.whatsapp) ||
-      "7678310566";
+    const notesText = specialNotes.trim() ? `\n*Note:* ${specialNotes.trim()}` : "";
 
-    const rawPhone = phoneSource.replace(/\D/g, "");
-    const waNumber = rawPhone.length === 10 ? `91${rawPhone}` : rawPhone;
-    const url = `https://wa.me/${waNumber}?text=${encodeURIComponent(message)}`;
-    window.open(url, "_blank");
-    clearCart();
-    setIsCartOpen(false);
-    setStep("cart");
+    const message =
+`*NEW ORDER - Aroma Kitchen by Isha*
+================================
+*Customer Details:*
+• Name: ${customerName.trim()}
+• Phone: ${customerPhone.trim()}
+• Address: ${deliveryAddress.trim()}
+
+*Delivery Timing:*
+• ${deliveryTimeText}
+
+*Order Summary:*
+--------------------------------
+${itemsFormatted}
+--------------------------------
+*Subtotal:* ₹${subtotal}
+*Delivery Fee:* ${deliveryFeeText}
+*Grand Total:* ₹${grandTotal}${notesText}
+
+Please confirm preparation and delivery availability. Thank you!`;
+
+    const encodedMessage = encodeURIComponent(message);
+    const whatsappUrl = `https://wa.me/917678310566?text=${encodedMessage}`;
+
+    // Open WhatsApp in new tab/app
+    window.open(whatsappUrl, "_blank");
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end bg-black/80 backdrop-blur-sm animate-fade-in">
-      <div className="w-full max-w-lg bg-[#18181b] border-l border-amber-900/30 flex flex-col h-full shadow-2xl text-zinc-100">
-        
+    <div className="fixed inset-0 z-50 flex justify-end animate-in fade-in duration-200">
+      {/* Backdrop */}
+      <div
+        className="fixed inset-0 bg-black/70 backdrop-blur-sm transition-opacity"
+        onClick={() => setIsCartOpen(false)}
+      />
+
+      {/* Slide-over Drawer */}
+      <div className="relative z-10 w-full max-w-md bg-zinc-950 border-l border-zinc-800 text-zinc-100 flex flex-col h-full shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="p-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/50">
-          <div>
-            <h2 className="text-lg font-serif font-bold text-amber-400">
-              {step === "cart" && `Your Food Cart (${totalCount})`}
-              {step === "time" && "Delivery Time"}
-              {step === "details" && "Your Delivery Details"}
-              {step === "summary" && "Confirm Order"}
-            </h2>
-            <p className="text-xs text-zinc-400">Aroma Kitchen by Isha</p>
+        <div className="p-4 sm:p-5 border-b border-zinc-800/80 flex items-center justify-between bg-zinc-900/50">
+          <div className="flex items-center gap-2.5">
+            <span className="font-serif font-bold text-lg text-zinc-100">Your Cart</span>
+            {cart.length > 0 && (
+              <span className="text-[11px] font-semibold bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2 py-0.5 rounded-full">
+                {cart.reduce((sum, item) => sum + item.quantity, 0)} items
+              </span>
+            )}
           </div>
           <button
+            type="button"
             onClick={() => setIsCartOpen(false)}
-            className="p-2 text-zinc-400 hover:text-white rounded-lg hover:bg-zinc-800 transition"
+            className="w-8 h-8 rounded-full bg-zinc-900 hover:bg-zinc-800 border border-zinc-800 flex items-center justify-center text-zinc-400 hover:text-zinc-100 transition"
+            aria-label="Close cart"
           >
             ✕
           </button>
         </div>
 
-        {/* Multi-Step Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
-          
-          {/* STEP 1: CART LIST */}
-          {step === "cart" && (
+        {/* Content Body */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-6">
+          {/* Empty State */}
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+              <div className="w-14 h-14 rounded-2xl bg-zinc-900 border border-zinc-800 flex items-center justify-center text-zinc-600">
+                <svg className="w-7 h-7" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z" />
+                </svg>
+              </div>
+              <p className="text-zinc-300 font-serif font-medium text-base">Your cart is empty</p>
+              <p className="text-xs text-zinc-500 max-w-xs">
+                Browse our fresh homestyle daily menu and add your favorite dishes.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsCartOpen(false)}
+                className="mt-2 px-5 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold uppercase tracking-wider transition shadow-md shadow-amber-500/20"
+              >
+                Explore Menu
+              </button>
+            </div>
+          ) : (
             <>
-              {cart.length === 0 ? (
-                <div className="py-20 text-center space-y-3">
-                  <div className="text-4xl">🍲</div>
-                  <p className="text-zinc-400">Your cart is empty.</p>
+              {/* Item List */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center text-xs text-zinc-400 pb-1 border-b border-zinc-900">
+                  <span>Selected Dishes</span>
                   <button
-                    onClick={() => setIsCartOpen(false)}
-                    className="px-4 py-2 text-sm bg-amber-500/20 text-amber-400 rounded-lg hover:bg-amber-500/30 transition"
+                    type="button"
+                    onClick={clearCart}
+                    className="text-zinc-500 hover:text-red-400 text-[11px] underline underline-offset-2 transition"
                   >
-                    Browse Today&apos;s Menu
+                    Clear All
                   </button>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  {cart.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex items-center gap-3 p-3 bg-zinc-900/80 rounded-xl border border-zinc-800/80"
-                    >
-                      <img
-                        src={item.imageUrl}
-                        alt={item.name}
-                        className="w-16 h-16 rounded-lg object-cover border border-zinc-700/50 flex-shrink-0"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <h4 className="font-medium text-sm text-zinc-100 truncate">{item.name}</h4>
-                        <p className="text-xs text-amber-400 font-medium">₹{item.priceNumeric} each</p>
-                        <p className="text-xs text-zinc-400 mt-0.5">Item subtotal: ₹{item.priceNumeric * item.quantity}</p>
-                      </div>
 
-                      {/* Quantity Controls */}
-                      <div className="flex items-center gap-2 bg-zinc-800 px-2 py-1 rounded-lg border border-zinc-700">
-                        <button
-                          onClick={() => updateQuantity(item.id, -1)}
-                          className="text-amber-400 font-bold hover:text-white px-1"
-                        >
-                          −
-                        </button>
-                        <span className="text-xs font-semibold w-4 text-center">{item.quantity}</span>
-                        <button
-                          onClick={() => updateQuantity(item.id, 1)}
-                          className="text-amber-400 font-bold hover:text-white px-1"
-                        >
-                          +
-                        </button>
-                      </div>
+                {cart.map((item) => (
+                  <div
+                    key={item.id}
+                    className="p-3 rounded-xl bg-zinc-900/60 border border-zinc-800/80 flex items-center justify-between gap-3"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-xs font-semibold text-zinc-100 truncate">
+                        {item.name}
+                      </h4>
+                      <p className="text-[11px] text-amber-400 font-medium">
+                        ₹{(item.priceNumeric || 0) * item.quantity}{" "}
+                        <span className="text-zinc-500 text-[10px]">
+                          (₹{item.priceNumeric} each)
+                        </span>
+                      </p>
+                    </div>
 
+                    {/* Quantity controls */}
+                    <div className="flex items-center gap-1.5 bg-zinc-950 border border-zinc-800 rounded-lg p-1">
                       <button
-                        onClick={() => removeFromCart(item.id)}
-                        className="text-zinc-500 hover:text-red-400 text-sm p-1"
-                        title="Remove"
+                        type="button"
+                        onClick={() => updateQuantity(item.id, -1)}
+                        className="w-6 h-6 rounded flex items-center justify-center bg-zinc-900 text-zinc-300 hover:bg-zinc-800 hover:text-white text-xs font-bold"
                       >
-                        🗑
+                        −
+                      </button>
+                      <span className="w-5 text-center text-xs font-bold text-zinc-200">
+                        {item.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => updateQuantity(item.id, 1)}
+                        className="w-6 h-6 rounded flex items-center justify-center bg-amber-500 text-zinc-950 hover:bg-amber-400 text-xs font-bold"
+                      >
+                        +
                       </button>
                     </div>
-                  ))}
+
+                    {/* Remove cross */}
+                    <button
+                      type="button"
+                      onClick={() => removeFromCart(item.id)}
+                      className="text-zinc-600 hover:text-red-400 text-xs p-1"
+                      aria-label="Remove item"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                ))}
+              </div>
+
+              {/* Delivery Timing Options */}
+              <div className="space-y-3 pt-3 border-t border-zinc-900">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block">
+                  Delivery Timing
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType("asap")}
+                    className={`p-2.5 rounded-xl border text-xs font-medium text-left transition ${
+                      deliveryType === "asap"
+                        ? "bg-amber-500/10 border-amber-500/60 text-amber-300 shadow-sm"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <div className="font-bold">⚡ ASAP</div>
+                    <div className="text-[10px] text-zinc-500">Freshly prepared & sent</div>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryType("scheduled")}
+                    className={`p-2.5 rounded-xl border text-xs font-medium text-left transition ${
+                      deliveryType === "scheduled"
+                        ? "bg-amber-500/10 border-amber-500/60 text-amber-300 shadow-sm"
+                        : "bg-zinc-900 border-zinc-800 text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    <div className="font-bold">🕒 Schedule</div>
+                    <div className="text-[10px] text-zinc-500">Select lunch/dinner time</div>
+                  </button>
+                </div>
+
+                {deliveryType === "scheduled" && (
+                  <input
+                    type="text"
+                    placeholder="e.g. 1:30 PM Lunch, or 8:30 PM Dinner"
+                    value={scheduledTime}
+                    onChange={(e) => setScheduledTime(e.target.value)}
+                    className="w-full text-xs p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-amber-500 text-zinc-200 outline-none transition"
+                  />
+                )}
+              </div>
+
+              {/* Delivery Address & Contact Details */}
+              <div className="space-y-2.5 pt-3 border-t border-zinc-900">
+                <label className="text-xs font-semibold uppercase tracking-wider text-zinc-400 block">
+                  Delivery Details
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    type="text"
+                    placeholder="Your Name *"
+                    value={customerName}
+                    onChange={(e) => setCustomerName(e.target.value)}
+                    className="text-xs p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-amber-500 text-zinc-200 outline-none transition"
+                  />
+                  <input
+                    type="tel"
+                    placeholder="Phone Number *"
+                    value={customerPhone}
+                    onChange={(e) => setCustomerPhone(e.target.value)}
+                    className="text-xs p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-amber-500 text-zinc-200 outline-none transition"
+                  />
+                </div>
+                <textarea
+                  rows={2}
+                  placeholder="Delivery Address (Flat / House No., Society / Tower, Landmark) *"
+                  value={deliveryAddress}
+                  onChange={(e) => setDeliveryAddress(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-amber-500 text-zinc-200 outline-none transition resize-none"
+                />
+                <input
+                  type="text"
+                  placeholder="Cooking instruction (e.g. less spicy, extra tissue)"
+                  value={specialNotes}
+                  onChange={(e) => setSpecialNotes(e.target.value)}
+                  className="w-full text-xs p-2.5 rounded-xl bg-zinc-900 border border-zinc-800 focus:border-amber-500 text-zinc-200 outline-none transition"
+                />
+              </div>
+
+              {/* Validation Warning */}
+              {validationError && (
+                <div className="p-2.5 rounded-xl bg-red-950/60 border border-red-500/40 text-red-300 text-xs text-center font-medium">
+                  {validationError}
                 </div>
               )}
             </>
           )}
+        </div>
 
-          {/* STEP 2: TIME SELECTION */}
-          {step === "time" && (
-            <div className="space-y-4">
-              <label className="text-sm font-medium text-zinc-300">When would you like your order?</label>
-              
-              <div className="grid grid-cols-1 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setTimingType("immediate")}
-                  className={`p-4 rounded-xl border text-left flex items-start gap-3 transition ${
-                    timingType === "immediate"
-                      ? "border-amber-500 bg-amber-500/10 text-white"
-                      : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700"
-                  }`}
-                >
-                  <span className="text-xl">⚡</span>
-                  <div>
-                    <div className="font-semibold text-sm">Order Immediately</div>
-                    <div className="text-xs text-zinc-400 mt-1">Prepared fresh and delivered ASAP (usually 35-50 mins)</div>
-                  </div>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setTimingType("scheduled")}
-                  className={`p-4 rounded-xl border text-left flex items-start gap-3 transition ${
-                    timingType === "scheduled"
-                      ? "border-amber-500 bg-amber-500/10 text-white"
-                      : "border-zinc-800 bg-zinc-900/60 text-zinc-400 hover:border-zinc-700"
-                  }`}
-                >
-                  <span className="text-xl">📅</span>
-                  <div>
-                    <div className="font-semibold text-sm">Schedule My Order</div>
-                    <div className="text-xs text-zinc-400 mt-1">Choose a specific date and time slot in advance</div>
-                  </div>
-                </button>
+        {/* Footer Price Breakdown & Action */}
+        {cart.length > 0 && (
+          <div className="p-4 sm:p-5 border-t border-zinc-800/80 bg-zinc-900/40 space-y-3">
+            <div className="space-y-1.5 text-xs text-zinc-400">
+              <div className="flex justify-between">
+                <span>Item Subtotal</span>
+                <span className="text-zinc-200 font-medium">₹{subtotal}</span>
               </div>
 
-              {timingType === "scheduled" && (
-                <div className="p-4 bg-zinc-900/90 border border-zinc-800 rounded-xl space-y-3 mt-3">
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Select Delivery Date</label>
-                    <input
-                      type="date"
-                      min={getMinDate()}
-                      value={scheduledDate}
-                      onChange={(e) => setScheduledDate(e.target.value)}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                    />
-                    {errors.date && <p className="text-xs text-red-400 mt-1">{errors.date}</p>}
-                  </div>
-
-                  <div>
-                    <label className="block text-xs text-zinc-400 mb-1">Select Delivery Time</label>
-                    <input
-                      type="time"
-                      value={scheduledTime}
-                      onChange={(e) => setScheduledTime(e.target.value)}
-                      className="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                    />
-                    {errors.time && <p className="text-xs text-red-400 mt-1">{errors.time}</p>}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* STEP 3: CUSTOMER DETAILS FORM */}
-          {step === "details" && (
-            <div className="space-y-3">
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Your Full Name *</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Vibhor Verma"
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-                {errors.name && <p className="text-xs text-red-400 mt-1">{errors.name}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Mobile / WhatsApp Number *</label>
-                <input
-                  type="tel"
-                  placeholder="e.g. 8650805090"
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-                {errors.phone && <p className="text-xs text-red-400 mt-1">{errors.phone}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Delivery Address *</label>
-                <textarea
-                  rows={3}
-                  placeholder="Flat/Tower number, society name, Rajnagar Extension landmark"
-                  value={deliveryAddress}
-                  onChange={(e) => setDeliveryAddress(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-                {errors.address && <p className="text-xs text-red-400 mt-1">{errors.address}</p>}
-              </div>
-
-              <div>
-                <label className="block text-xs text-zinc-400 mb-1">Special Instructions (Optional)</label>
-                <input
-                  type="text"
-                  placeholder="Less spicy, extra green chutney, don't ring bell, etc."
-                  value={specialInstructions}
-                  onChange={(e) => setSpecialInstructions(e.target.value)}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-sm text-zinc-100 focus:outline-none focus:border-amber-500"
-                />
-              </div>
-            </div>
-          )}
-
-          {/* STEP 4: ORDER SUMMARY */}
-          {step === "summary" && (
-            <div className="space-y-4">
-              <div className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 space-y-2">
-                <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Customer & Delivery</div>
-                <div className="text-sm font-medium">{customerName} ({phoneNumber})</div>
-                <div className="text-xs text-zinc-400">{deliveryAddress}</div>
-                <div className="text-xs text-emerald-400 pt-1">
-                  ⏱ {timingType === "immediate" ? "Immediate Delivery (ASAP)" : `Scheduled: ${scheduledDate} at ${scheduledTime}`}
-                </div>
-                {specialInstructions && (
-                  <div className="text-xs text-zinc-300 italic pt-1 border-t border-zinc-800 mt-2">
-                    Note: &quot;{specialInstructions}&quot;
-                  </div>
+              <div className="flex justify-between items-center">
+                <span>Delivery Charge</span>
+                {deliveryFee === 0 ? (
+                  <span className="text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20 text-[10px]">
+                    FREE (Order above ₹200)
+                  </span>
+                ) : (
+                  <span className="text-zinc-200 font-medium">
+                    ₹{deliveryFee}{" "}
+                    <span className="text-[10px] text-zinc-500">
+                      (Free above ₹200)
+                    </span>
+                  </span>
                 )}
               </div>
 
-              <div className="p-3 bg-zinc-900 rounded-xl border border-zinc-800 space-y-2">
-                <div className="text-xs font-semibold text-amber-400 uppercase tracking-wider">Order Items</div>
-                <div className="divide-y divide-zinc-800">
-                  {cart.map((item) => (
-                    <div key={item.id} className="py-2 flex justify-between text-xs">
-                      <div>
-                        <span className="font-medium text-zinc-200">{item.name}</span> × {item.quantity}
-                      </div>
-                      <div className="font-semibold text-zinc-300">₹{item.priceNumeric * item.quantity}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
-
-        </div>
-
-        {/* Footer with Calculations and Action Buttons */}
-        {cart.length > 0 && (
-          <div className="p-4 border-t border-zinc-800 bg-zinc-950/70 space-y-3">
-            <div className="space-y-1.5 text-xs text-zinc-400">
-              <div className="flex justify-between">
-                <span>Subtotal</span>
-                <span className="text-zinc-200">₹{subtotal}</span>
-              </div>
-              <div className="flex justify-between">
-                <span>Delivery Charge</span>
-                <span>{deliveryCharge === 0 ? <span className="text-emerald-400">FREE</span> : `₹${deliveryCharge}`}</span>
-              </div>
-              <div className="flex justify-between text-sm font-bold text-amber-400 pt-2 border-t border-zinc-800">
+              <div className="flex justify-between pt-2 border-t border-zinc-800 text-sm font-bold text-zinc-100">
                 <span>Grand Total</span>
-                <span>₹{grandTotal}</span>
+                <span className="text-amber-400">₹{grandTotal}</span>
               </div>
             </div>
 
-            {/* Step Controls */}
-            <div className="flex items-center gap-2 pt-1">
-              {step !== "cart" && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (step === "time") setStep("cart");
-                    if (step === "details") setStep("time");
-                    if (step === "summary") setStep("details");
-                  }}
-                  className="px-4 py-2.5 rounded-xl border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 text-xs font-semibold transition"
-                >
-                  Back
-                </button>
-              )}
-
-              {step === "cart" && (
-                <button
-                  type="button"
-                  onClick={handleProceedFromCart}
-                  className="flex-1 py-3 px-4 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-zinc-950 font-bold text-sm shadow-lg shadow-amber-500/20 transition flex justify-between items-center"
-                >
-                  <span>Proceed to Order</span>
-                  <span>₹{grandTotal} →</span>
-                </button>
-              )}
-
-              {step === "time" && (
-                <button
-                  type="button"
-                  onClick={handleProceedFromTime}
-                  className="flex-1 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm transition text-center"
-                >
-                  Next: Enter Delivery Details →
-                </button>
-              )}
-
-              {step === "details" && (
-                <button
-                  type="button"
-                  onClick={handleProceedFromDetails}
-                  className="flex-1 py-3 px-4 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm transition text-center"
-                >
-                  Review Order Summary →
-                </button>
-              )}
-
-              {step === "summary" && (
-                <button
-                  type="button"
-                  onClick={generateWhatsAppMessage}
-                  className="flex-1 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-sm shadow-lg shadow-emerald-600/20 transition flex items-center justify-center gap-2"
-                >
-                  <span>Confirm Order on WhatsApp</span>
-                  <span>💬</span>
-                </button>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={handleCheckoutWhatsApp}
+              className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] text-white text-xs font-bold uppercase tracking-wider transition shadow-lg shadow-emerald-600/30 flex items-center justify-center gap-2 cursor-pointer"
+            >
+              <span>Confirm & Order on WhatsApp</span>
+              <span>→</span>
+            </button>
           </div>
         )}
-
       </div>
     </div>
   );

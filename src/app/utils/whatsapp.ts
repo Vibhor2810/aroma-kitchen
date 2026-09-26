@@ -1,64 +1,144 @@
-import { BUSINESS_CONFIG } from "@/app/config/business";
+import { CartItem } from "@/app/context/CartContext";
 
-export function getGeneralWhatsAppUrl(): string {
-  const message =
-    "Hi Aroma Kitchen, I would like to place an order. Please share the current availability and ordering details.";
-  return `https://wa.me/91${BUSINESS_CONFIG.whatsappNumber}?text=${encodeURIComponent(message)}`;
+const KITCHEN_WHATSAPP_NUMBER = "917678310566"; // Aroma Kitchen WhatsApp Phone
+
+export interface CheckoutOrderDetails {
+  customerName: string;
+  customerPhone: string;
+  deliveryAddress: string;
+  deliveryType: "asap" | "scheduled";
+  scheduledTime?: string;
+  specialNotes?: string;
+  items: CartItem[];
+  subtotal: number;
+  deliveryFee: number;
+  grandTotal: number;
 }
 
-export function getItemOrderWhatsAppUrl(itemName: string, price: string): string {
-  const message = `Hi Aroma Kitchen, I would like to order:
-
-Item:
-${itemName}
-
-Price:
-${price}
-
-Please confirm availability and the total order amount.`;
-
-  return `https://wa.me/91${BUSINESS_CONFIG.whatsappNumber}?text=${encodeURIComponent(message)}`;
-}
-
-export interface PartyEnquiryData {
-  fullName: string;
+export interface PartyOrderDetails {
+  name: string;
   phone: string;
-  eventType: string;
   eventDate: string;
+  eventTime: string;
   guestCount: number | string;
-  foodRequirements: string;
-  additionalDetails?: string;
-  preferredContactTime?: string;
+  mealType: string;
+  dietaryPreference: string;
+  dishRequests: string;
+  deliveryAddress: string;
+  specialInstructions?: string;
 }
 
-export function getPartyEnquiryWhatsAppUrl(data: PartyEnquiryData): string {
-  const lines: string[] = [
-    "Hi Aroma Kitchen,",
-    "",
-    "I'd like to enquire about a party/special occasion order.",
-    "",
-    "CUSTOMER DETAILS",
-    `Name: ${data.fullName}`,
-    `Phone: ${data.phone}`,
-    "",
-    "EVENT DETAILS",
-    `Event Type: ${data.eventType}`,
-    `Event Date: ${data.eventDate}`,
-    `Number of Guests: ${data.guestCount}`,
-    "",
-    "FOOD / REQUIREMENTS",
-    data.foodRequirements.trim() || "Options as recommended by kitchen",
-  ];
+/**
+ * Creates the encoded WhatsApp checkout link for daily cart orders.
+ */
+export function generateCartWhatsAppUrl(details: CheckoutOrderDetails): string {
+  const {
+    customerName,
+    customerPhone,
+    deliveryAddress,
+    deliveryType,
+    scheduledTime,
+    specialNotes,
+    items,
+    subtotal,
+    deliveryFee,
+    grandTotal,
+  } = details;
 
-  if (data.additionalDetails && data.additionalDetails.trim()) {
-    lines.push("", "ADDITIONAL DETAILS", data.additionalDetails.trim());
-  }
+  const itemsList = items
+    .map((item, index) => {
+      const price = item.priceNumeric || 0;
+      const totalItemCost = price * item.quantity;
+      return `${index + 1}. *${item.name}* x ${item.quantity} = ₹${totalItemCost}`;
+    })
+    .join("\n");
 
-  if (data.preferredContactTime) {
-    lines.push("", "PREFERRED CONTACT TIME", data.preferredContactTime);
-  }
+  const timingText =
+    deliveryType === "asap"
+      ? "⚡ As soon as possible (Freshly prepared)"
+      : `🕒 Scheduled for: ${scheduledTime || "As per agreed slot"}`;
 
-  lines.push("", "Please share the available options and pricing.");
+  const deliveryFeeDisplay =
+    deliveryFee === 0 ? "FREE (Order above ₹200)" : `₹${deliveryFee}`;
 
-  return `https://wa.me/91${BUSINESS_CONFIG.whatsappNumber}?text=${encodeURIComponent(lines.join("\n"))}`;
+  const notesSection = specialNotes && specialNotes.trim()
+    ? `\n*Cooking / Delivery Notes:* ${specialNotes.trim()}`
+    : "";
+
+  const text =
+`*NEW ORDER - Aroma Kitchen by Isha*
+================================
+*Customer Details:*
+• Name: ${customerName.trim()}
+• Phone: ${customerPhone.trim()}
+• Address: ${deliveryAddress.trim()}
+
+*Delivery Timing:*
+• ${timingText}
+
+*Order Breakdown:*
+--------------------------------
+${itemsList}
+--------------------------------
+*Subtotal:* ₹${subtotal}
+*Delivery Fee:* ${deliveryFeeDisplay}
+*Grand Total:* ₹${grandTotal}${notesSection}
+
+Please confirm preparation time and payment mode. Thank you!`;
+
+  return `https://wa.me/${KITCHEN_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * Creates the encoded WhatsApp link for party and bulk catering inquiries.
+ */
+export function generatePartyOrderWhatsAppUrl(details: PartyOrderDetails): string {
+  const {
+    name,
+    phone,
+    eventDate,
+    eventTime,
+    guestCount,
+    mealType,
+    dietaryPreference,
+    dishRequests,
+    deliveryAddress,
+    specialInstructions,
+  } = details;
+
+  const notesSection = specialInstructions && specialInstructions.trim()
+    ? `\n*Additional Notes:* ${specialInstructions.trim()}`
+    : "";
+
+  const text =
+`*PARTY & BULK CATERING INQUIRY*
+*Aroma Kitchen by Isha*
+================================
+*Host Details:*
+• Name: ${name.trim()}
+• Contact: ${phone.trim()}
+• Delivery Venue / Address: ${deliveryAddress.trim()}
+
+*Event Schedule:*
+• Date: ${eventDate}
+• Service Time: ${eventTime}
+• Estimated Guests: ${guestCount} people
+
+*Menu Preferences:*
+• Meal Type: ${mealType}
+• Dietary Preference: ${dietaryPreference}
+• Requested Dishes / Items:
+${dishRequests.trim()}${notesSection}
+
+Please share a customized menu quote and confirmation details.`;
+
+  return `https://wa.me/${KITCHEN_WHATSAPP_NUMBER}?text=${encodeURIComponent(text)}`;
+}
+
+/**
+ * Creates a generic WhatsApp chat link.
+ */
+export function generateGeneralInquiryWhatsAppUrl(message?: string): string {
+  const defaultText = message || "Hi Aroma Kitchen, I would like to inquire about today's fresh menu!";
+  return `https://wa.me/${KITCHEN_WHATSAPP_NUMBER}?text=${encodeURIComponent(defaultText)}`;
 }
