@@ -1,103 +1,221 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
-import { useCart } from "../context/CartContext";
+import { useEffect, useState } from "react";
+import { useCart } from "@/app/context/CartContext";
 
-interface MenuItem {
-  id: string;
-  category: string;
-  item: string;
-  price: string;
-  description: string;
-  available: boolean;
+interface RawMenuItem {
+  Date?: string;
+  Category?: string;
+  category?: string;
+  Item?: string;
+  item?: string;
+  name?: string;
+  Price?: string | number;
+  price?: string | number;
+  Description?: string;
+  description?: string;
+  Available?: string;
+  available?: string;
+  "Image url"?: string;
   imageUrl?: string;
 }
 
-interface MenuResponse {
-  dateString: string;
-  formattedDate: string;
-  isMonday: boolean;
-  status: "OPEN" | "MONDAY_CLOSED" | "EMPTY_MENU" | "ERROR";
-  categories: string[];
-  items: MenuItem[];
-  message?: string;
+interface ParsedDish {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  image: string;
+  available: boolean;
+  hasPortions: boolean;
+  fullPrice: number;
+  halfPrice: number;
+  displayPrice: string;
 }
-
+function getDishImage(dishName: string, category?: string): string {
+  const name = dishName.toLowerCase();
+  if (name.includes("paneer")) return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSyq4DY8nDK6wW1EAwv0qV4IPKalexiDpWdVskDJ9yEtw&s=10";
+  if (name.includes("butter chicken") || name.includes("chicken")) return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRwmk6j0DnoeKDMr7aAV-e0Gp-zrpoqSRdsXppub8iHEg&s=10";
+  if (name.includes("biryani")) return "https://www.licious.in/blog/wp-content/uploads/2022/06/chicken-hyderabadi-biryani-01.jpg";
+  if (category && category.toLowerCase().includes("non")) return "https://static.vecteezy.com/system/resources/thumbnails/029/858/402/small/of-tandoori-chicken-as-a-dish-in-a-high-end-restaurant-generative-ai-photo.jpg";
+  return "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcT2RmW68YZ-lkG2mZDsAZyucqhNXCPx0Ayjl2tdYWgCuQ&s=10";
+}
 export default function TodayMenu() {
-  const [data, setData] = useState<MenuResponse | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [selectedCategory, setSelectedCategory] = useState<string>("All");
+  const [dishes, setDishes] = useState<ParsedDish[]>([]);
+  const [activeCategory, setActiveCategory] = useState<string>("all");
+  const [loading, setLoading] = useState<boolean>(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const { cart, addToCart, updateQuantity, totalCount, subtotal, setIsCartOpen } = useCart();
+  // Per-item active portion toggle state: itemId -> "Full" | "Half"
+  const [portionSelections, setPortionSelections] = useState<Record<string, "Full" | "Half">>({});
+
+  const { cart: items, addToCart, updateQuantity, setIsCartOpen, totalCount, subtotal } = useCart();
 
   useEffect(() => {
-    async function loadMenu() {
+    async function fetchMenu() {
       try {
+        setLoading(true);
+        setError(null);
+
         const res = await fetch("/api/menu/today");
-        const json = await res.json();
-        setData(json);
-      } catch {
-        setData(null);
+        if (!res.ok) {
+          throw new Error(`Failed to load menu (${res.status})`);
+        }
+
+        const data = await res.json();
+        const rawItems: RawMenuItem[] = Array.isArray(data)
+          ? data
+          : data.items || data.menu || [];
+
+        const parsed: ParsedDish[] = rawItems
+          .map((row, index) => {
+            const name = (row.Item || row.item || row.name || "").trim();
+            const category = (row.Category || row.category || "Main Course").trim();
+            const desc = (row.Description || row.description || "").trim();
+            const rawPrice = String(row.Price || row.price || "0").trim();
+            const rawAvail = String(row.Available || row.available || "yes").trim().toLowerCase();
+            const rawImg = (row["Image url"] || row.imageUrl || "").trim();
+
+            if (!name) return null;
+
+            // Parse price: handles "600/350", "360/200", or flat "250"
+            const parts = rawPrice
+              .split("/")
+              .map((p) => parseInt(p.replace(/\D/g, ""), 10))
+              .filter((n) => !isNaN(n) && n > 0);
+
+            const hasPortions = parts.length >= 2;
+            const fullPrice = parts[0] || 0;
+            const halfPrice = hasPortions ? parts[1] : 0;
+
+            const safeId = `${name.toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${index}`;
+            const fallbackImage = getDishImage(name, category);
+
+            return {
+              id: safeId,
+              name,
+              category,
+              description: desc,
+              image: rawImg || fallbackImage,
+              available: rawAvail === "yes" || rawAvail === "true" || rawAvail === "1",
+              hasPortions,
+              fullPrice,
+              halfPrice,
+              displayPrice: rawPrice,
+            };
+          })
+          .filter((dish): dish is ParsedDish => dish !== null);
+
+        setDishes(parsed);
+      } catch (err: unknown) {
+        console.error("Menu fetch error:", err);
+        setError("Unable to load today's menu at the moment. Please order directly on WhatsApp.");
       } finally {
         setLoading(false);
       }
     }
-    loadMenu();
+
+    fetchMenu();
   }, []);
 
-  if (loading) {
-    return (
-      <section id="todays-menu" className="py-16 px-4 max-w-7xl mx-auto text-center">
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-zinc-800 w-48 mx-auto rounded"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 pt-8">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-64 bg-zinc-900 rounded-2xl border border-zinc-800"></div>
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
+  const categories = ["all", ...Array.from(new Set(dishes.map((d) => d.category.toLowerCase())))];
 
-  if (data?.isMonday || data?.status === "MONDAY_CLOSED") {
-    return (
-      <section id="todays-menu" className="py-20 px-4 max-w-4xl mx-auto text-center">
-        <div className="p-8 rounded-3xl bg-amber-500/10 border border-amber-500/30">
-          <h2 className="text-3xl font-serif font-bold text-amber-400">Kitchen Closed on Mondays</h2>
-          <p className="text-zinc-400 mt-2">We recharge to serve you fresh home-style meals throughout the week!</p>
-        </div>
-      </section>
-    );
-  }
+  const filteredDishes =
+    activeCategory === "all"
+      ? dishes
+      : dishes.filter((d) => d.category.toLowerCase() === activeCategory);
 
-  const items = data?.items || [];
-  const filteredItems =
-    selectedCategory === "All"
-      ? items
-      : items.filter((dish) => dish.category.toLowerCase() === selectedCategory.toLowerCase());
+  const getPortion = (dishId: string): "Full" | "Half" => {
+    return portionSelections[dishId] || "Full";
+  };
+
+  const setPortion = (dishId: string, portion: "Full" | "Half") => {
+    setPortionSelections((prev) => ({ ...prev, [dishId]: portion }));
+  };
+
+  // Resolve cart item quantity according to the currently active portion
+  const getItemCartQuantity = (dish: ParsedDish) => {
+    if (dish.hasPortions) {
+      const activePortion = getPortion(dish.id);
+      const cartItemId = `${dish.id}-${activePortion.toLowerCase()}`;
+      const found = items.find((i) => i.id === cartItemId);
+      return found ? found.quantity : 0;
+    } else {
+      const found = items.find((i) => i.id === dish.id);
+      return found ? found.quantity : 0;
+    }
+  };
+
+  const handleAdd = (dish: ParsedDish) => {
+    if (dish.hasPortions) {
+      const activePortion = getPortion(dish.id);
+      const price = activePortion === "Half" ? dish.halfPrice : dish.fullPrice;
+      addToCart({
+        id: `${dish.id}-${activePortion.toLowerCase()}`,
+        name: `${dish.name} (${activePortion})`,
+        price: String(price),
+        imageUrl: dish.image,
+      });
+    } else {
+      addToCart({
+        id: dish.id,
+        name: dish.name,
+        price: String(dish.fullPrice),
+        imageUrl: dish.image,
+      });
+    }
+  };
+
+  const handleIncrement = (dish: ParsedDish) => {
+    if (dish.hasPortions) {
+      const activePortion = getPortion(dish.id);
+      const cartItemId = `${dish.id}-${activePortion.toLowerCase()}`;
+      const currentQty = getItemCartQuantity(dish);
+      updateQuantity(cartItemId, currentQty + 1);
+    } else {
+      const currentQty = getItemCartQuantity(dish);
+      updateQuantity(dish.id, currentQty + 1);
+    }
+  };
+
+  const handleDecrement = (dish: ParsedDish) => {
+    if (dish.hasPortions) {
+      const activePortion = getPortion(dish.id);
+      const cartItemId = `${dish.id}-${activePortion.toLowerCase()}`;
+      const currentQty = getItemCartQuantity(dish);
+      updateQuantity(cartItemId, Math.max(0, currentQty - 1));
+    } else {
+      const currentQty = getItemCartQuantity(dish);
+      updateQuantity(dish.id, Math.max(0, currentQty - 1));
+    }
+  };
 
   return (
-    <section id="todays-menu" className="py-16 px-4 max-w-7xl mx-auto relative">
-      <div className="text-center space-y-2 mb-10">
-        <span className="text-xs uppercase tracking-widest text-amber-400 font-semibold">
-          Freshly Prepared For Today
+    <section id="todays-menu" className="py-12 px-4 max-w-7xl mx-auto scroll-mt-24">
+      {/* Section Header */}
+      <div className="text-center max-w-2xl mx-auto mb-10 space-y-2">
+        <span className="text-xs uppercase tracking-widest text-amber-400 font-semibold bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20 inline-block">
+          Fresh From Our Kitchen
         </span>
-        <h2 className="text-4xl font-serif font-bold text-zinc-100">TODAY&apos;S MENU</h2>
-        <p className="text-sm text-zinc-400">{data?.formattedDate}</p>
+        <h2 className="text-3xl sm:text-4xl font-serif font-bold text-zinc-100">
+          Today&apos;s Special Menu
+        </h2>
+        <p className="text-xs sm:text-sm text-zinc-400">
+          Homestyle North Indian delicacies made fresh daily. Select serving sizes and add to cart for seamless WhatsApp checkout.
+        </p>
       </div>
 
       {/* Category Pills */}
-      {data?.categories && data.categories.length > 0 && (
-        <div className="flex flex-wrap justify-center gap-2 mb-10">
-          {["All", ...data.categories].map((cat) => (
+      {categories.length > 2 && (
+        <div className="flex items-center justify-center gap-2 overflow-x-auto pb-4 mb-8 no-scrollbar">
+          {categories.map((cat) => (
             <button
               key={cat}
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-4 py-2 rounded-full text-xs font-semibold tracking-wide transition ${
-                selectedCategory.toLowerCase() === cat.toLowerCase()
-                  ? "bg-amber-500 text-zinc-950 shadow-md shadow-amber-500/20"
-                  : "bg-zinc-900 text-zinc-400 hover:text-white border border-zinc-800"
+              onClick={() => setActiveCategory(cat)}
+              className={`px-4 py-1.5 rounded-full text-xs font-medium capitalize whitespace-nowrap transition ${
+                activeCategory === cat
+                  ? "bg-amber-500 text-zinc-950 font-bold shadow-md shadow-amber-500/20"
+                  : "bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800"
               }`}
             >
               {cat}
@@ -106,108 +224,209 @@ export default function TodayMenu() {
         </div>
       )}
 
-      {/* Grid of Dishes */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {filteredItems.map((dish) => {
-          const cartItem = cart.find((i) => i.id === dish.id);
+      {/* Loading & Error States */}
+      {loading && (
+        <div className="flex flex-col items-center justify-center py-20 text-zinc-500 space-y-3">
+          <div className="w-8 h-8 border-2 border-amber-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-xs uppercase tracking-wider text-zinc-400">Loading today&apos;s fresh menu...</p>
+        </div>
+      )}
 
-          return (
-            <div
-              key={dish.id}
-              className="bg-zinc-900/80 border border-zinc-800/80 rounded-2xl overflow-hidden flex flex-col group hover:border-amber-500/40 transition duration-300 shadow-xl"
-            >
-              <div className="relative h-48 w-full overflow-hidden bg-zinc-950">
-                <img
-                  src={dish.imageUrl}
-                  alt={dish.item}
-                  className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
-                />
-                <span className="absolute top-3 left-3 bg-black/70 backdrop-blur-md px-2.5 py-1 rounded-md text-[10px] uppercase font-bold tracking-wider text-amber-400 border border-amber-500/30">
-                  {dish.category}
-                </span>
-                {!dish.available && (
-                  <span className="absolute inset-0 bg-black/80 flex items-center justify-center text-sm font-bold text-red-400">
-                    Sold Out
-                  </span>
-                )}
-              </div>
-
-              <div className="p-5 flex-1 flex flex-col justify-between space-y-4">
-                <div>
-                  <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-serif font-bold text-lg text-zinc-100">{dish.item}</h3>
-                    <span className="text-amber-400 font-bold text-base whitespace-nowrap">{dish.price}</span>
-                  </div>
-                  {dish.description && (
-                    <p className="text-xs text-zinc-400 mt-1 line-clamp-2">{dish.description}</p>
-                  )}
-                </div>
-
-                {/* Add to Cart / Stepper */}
-                <div>
-                  {!dish.available ? (
-                    <button
-                      disabled
-                      className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-500 text-xs font-semibold cursor-not-allowed"
-                    >
-                      Currently Unavailable
-                    </button>
-                  ) : cartItem ? (
-                    <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/40 rounded-xl px-4 py-2">
-                      <button
-                        onClick={() => updateQuantity(dish.id, -1)}
-                        className="text-amber-400 font-bold text-lg hover:text-white px-2"
-                      >
-                        −
-                      </button>
-                      <span className="text-sm font-bold text-amber-300">
-                        {cartItem.quantity} in cart
-                      </span>
-                      <button
-                        onClick={() => updateQuantity(dish.id, 1)}
-                        className="text-amber-400 font-bold text-lg hover:text-white px-2"
-                      >
-                        +
-                      </button>
-                    </div>
-                  ) : (
-                    <button
-                      onClick={() =>
-                        addToCart({
-                          id: dish.id,
-                          name: dish.item,
-                          price: dish.price,
-                          imageUrl: dish.imageUrl,
-                        })
-                      }
-                      className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-xs uppercase tracking-wider transition shadow-md shadow-amber-500/10 flex items-center justify-center gap-2"
-                    >
-                      <span>Add to Cart</span>
-                      <span>+</span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-
-      {/* Floating Cart Bar (appears as soon as any item is added) */}
-      {totalCount > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-40 w-[90%] max-w-md">
-          <button
-            onClick={() => setIsCartOpen(true)}
-            className="w-full py-3.5 px-5 rounded-2xl bg-amber-500 hover:bg-amber-400 text-zinc-950 font-bold text-sm shadow-2xl shadow-amber-500/30 flex items-center justify-between border border-amber-300/40 transition transform active:scale-95"
+      {error && !loading && (
+        <div className="p-6 rounded-2xl bg-zinc-900/90 border border-amber-500/30 text-center max-w-md mx-auto space-y-3">
+          <p className="text-sm text-zinc-300">{error}</p>
+          <a
+            href="https://wa.me/917678310566?text=Hi%20Aroma%20Kitchen%2C%20please%20share%20today%27s%20available%20menu"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block px-5 py-2 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold shadow-md transition"
           >
-            <div className="flex items-center gap-2">
-              <span className="bg-zinc-950 text-amber-400 text-xs px-2 py-0.5 rounded-full font-extrabold">
-                {totalCount}
-              </span>
-              <span>View Cart</span>
+            Chat with Kitchen on WhatsApp
+          </a>
+        </div>
+      )}
+
+      {/* Dish Grid */}
+      {!loading && !error && dishes.length === 0 && (
+        <div className="text-center py-16 bg-zinc-900/40 rounded-2xl border border-zinc-800 p-8 max-w-lg mx-auto">
+          <p className="text-zinc-300 font-serif text-lg">Kitchen is resting today!</p>
+          <p className="text-xs text-zinc-500 mt-2">
+            Fresh daily menus update every morning (Tuesday to Sunday).
+          </p>
+        </div>
+      )}
+
+      {!loading && !error && filteredDishes.length > 0 && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+          {filteredDishes.map((dish) => {
+            const currentPortion = getPortion(dish.id);
+            const qty = getItemCartQuantity(dish);
+
+            const displayAmount = dish.hasPortions
+              ? currentPortion === "Half"
+                ? dish.halfPrice
+                : dish.fullPrice
+              : dish.fullPrice;
+
+            return (
+              <div
+                key={dish.id}
+                className="bg-zinc-900/80 rounded-2xl border border-zinc-800/80 overflow-hidden flex flex-col justify-between hover:border-amber-500/40 transition duration-300 shadow-lg shadow-black/40 group"
+              >
+                {/* Image Container */}
+                <div className="relative h-48 w-full overflow-hidden bg-zinc-950">
+                  <img
+                    src={dish.image}
+                    alt={dish.name}
+                    className="w-full h-full object-cover group-hover:scale-105 transition duration-500"
+                    loading="lazy"
+                  />
+                  <div className="absolute top-3 left-3 flex gap-2">
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border shadow-sm ${
+                        dish.category.toLowerCase().includes("non")
+                          ? "bg-red-950/80 text-red-300 border-red-500/40"
+                          : "bg-emerald-950/80 text-emerald-300 border-emerald-500/40"
+                      }`}
+                    >
+                      {dish.category}
+                    </span>
+                  </div>
+
+                  {!dish.available && (
+                    <div className="absolute inset-0 bg-black/75 backdrop-blur-[2px] flex items-center justify-center">
+                      <span className="text-xs uppercase tracking-widest font-bold text-zinc-300 bg-zinc-900 px-3 py-1 rounded-full border border-zinc-700">
+                        Sold Out For Today
+                      </span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Details */}
+                <div className="p-5 flex-1 flex flex-col justify-between">
+                  <div>
+                    <div className="flex items-start justify-between gap-2">
+                      <h3 className="font-serif font-bold text-lg text-zinc-100 group-hover:text-amber-300 transition">
+                        {dish.name}
+                      </h3>
+                      <span className="text-amber-400 font-bold text-base shrink-0">
+                        ₹{displayAmount}
+                      </span>
+                    </div>
+
+                    {dish.description && (
+                      <p className="text-xs text-zinc-400 mt-1.5 line-clamp-2 leading-relaxed">
+                        {dish.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Serving Portion Toggle (Only when dual price like 600/350 exists) */}
+                  <div className="mt-4 pt-3 border-t border-zinc-800/80">
+                    {dish.hasPortions ? (
+                      <div className="flex items-center gap-2 mb-3 bg-zinc-950/80 p-1 rounded-lg border border-zinc-800">
+                        <button
+                          type="button"
+                          onClick={() => setPortion(dish.id, "Full")}
+                          className={`flex-1 py-1 text-xs rounded-md font-medium transition ${
+                            currentPortion === "Full"
+                              ? "bg-amber-500 text-zinc-950 font-bold shadow"
+                              : "text-zinc-400 hover:text-zinc-200"
+                          }`}
+                        >
+                          Full (₹{dish.fullPrice})
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setPortion(dish.id, "Half")}
+                          className={`flex-1 py-1 text-xs rounded-md font-medium transition ${
+                            currentPortion === "Half"
+                              ? "bg-amber-500 text-zinc-950 font-bold shadow"
+                              : "text-zinc-400 hover:text-zinc-200"
+                          }`}
+                        >
+                          Half (₹{dish.halfPrice})
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-[11px] text-zinc-500 mb-3 italic">
+                        Standard Portioned Serving
+                      </div>
+                    )}
+
+                    {/* Add to Cart / Quantity Stepper Button */}
+                    {!dish.available ? (
+                      <button
+                        disabled
+                        className="w-full py-2.5 rounded-xl bg-zinc-800 text-zinc-500 text-xs font-semibold cursor-not-allowed uppercase tracking-wider"
+                      >
+                        Unavailable
+                      </button>
+                    ) : qty === 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => handleAdd(dish)}
+                        className="w-full py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold uppercase tracking-wider transition shadow-md shadow-amber-500/20 active:scale-[0.98]"
+                      >
+                        Add To Cart {dish.hasPortions ? `(${currentPortion})` : ""}
+                      </button>
+                    ) : (
+                      <div className="flex items-center justify-between bg-amber-500/10 border border-amber-500/40 rounded-xl px-2 py-1.5">
+                        <button
+                          type="button"
+                          onClick={() => handleDecrement(dish)}
+                          className="w-8 h-8 rounded-lg bg-zinc-900 border border-amber-500/40 text-amber-400 font-bold hover:bg-amber-500 hover:text-zinc-950 transition flex items-center justify-center text-sm"
+                        >
+                          −
+                        </button>
+                        <div className="text-center">
+                          <span className="text-xs font-bold text-amber-300">
+                            {qty} in cart
+                          </span>
+                          {dish.hasPortions && (
+                            <span className="block text-[10px] text-zinc-400 leading-none">
+                              {currentPortion}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleIncrement(dish)}
+                          className="w-8 h-8 rounded-lg bg-amber-500 text-zinc-950 font-bold hover:bg-amber-400 transition flex items-center justify-center text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Floating Bottom Cart Bar (appears when items are in cart) */}
+      {totalCount > 0 && (
+        <div className="fixed bottom-4 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-40 animate-fade-in-up">
+          <div className="bg-gradient-to-r from-zinc-900 to-zinc-950 border border-amber-500/40 p-3.5 rounded-2xl shadow-2xl flex items-center justify-between backdrop-blur-md">
+            <div>
+              <div className="text-xs font-semibold text-zinc-200">
+                {totalCount} {totalCount === 1 ? "dish" : "dishes"} selected
+              </div>
+              <div className="text-amber-400 font-bold text-sm">
+                ₹{subtotal} <span className="text-[10px] text-zinc-400 font-normal">+ delivery</span>
+              </div>
             </div>
-            <span>₹{subtotal} →</span>
-          </button>
+            <button
+              type="button"
+              onClick={() => setIsCartOpen(true)}
+              className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-zinc-950 text-xs font-bold uppercase tracking-wider transition shadow-md shadow-amber-500/30 flex items-center gap-1.5"
+            >
+              <span>View Cart</span>
+              <span>→</span>
+            </button>
+          </div>
         </div>
       )}
     </section>

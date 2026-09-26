@@ -1,14 +1,16 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect } from "react";
-
 export interface CartItem {
   id: string;
   name: string;
   priceNumeric: number;
   priceLabel: string;
   quantity: number;
-  imageUrl: string;
+  imageUrl?: string;
+  price?: string | number;
+  category?: string;
+  portion?: string;
 }
 
 interface CartContextType {
@@ -50,7 +52,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [cart]);
 
   const parsePrice = (priceStr: string): number => {
-    // Extracts the primary or base number from strings like "₹360/200", "₹250", "300"
+    // Keep digits and slashes so dual pricing like "360/200" works
     const cleaned = priceStr.replace(/[^0-9/]/g, "");
     if (cleaned.includes("/")) {
       const parts = cleaned.split("/");
@@ -61,24 +63,24 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const addToCart = (dish: { id: string; name: string; price: string; imageUrl?: string }) => {
     const numeric = parsePrice(dish.price);
-    setCart((prev) => {
+    setCart((prev: CartItem[]) => {
       const existing = prev.find((item) => item.id === dish.id);
       if (existing) {
         return prev.map((item) =>
           item.id === dish.id ? { ...item, quantity: item.quantity + 1 } : item
         );
       }
-      return [
-        ...prev,
-        {
-          id: dish.id,
-          name: dish.name,
-          priceNumeric: numeric,
-          priceLabel: dish.price,
-          quantity: 1,
-          imageUrl: dish.imageUrl || "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=800&q=80",
-        },
-      ];
+      const newItem: CartItem = {
+        id: dish.id,
+        name: dish.name,
+        priceNumeric: numeric,
+        priceLabel: dish.price,
+        quantity: 1,
+        imageUrl:
+          dish.imageUrl ||
+          "https://images.unsplash.com/photo-1631452180519-c014fe946bc7?auto=format&fit=crop&w=800&q=80",
+      };
+      return [...prev, newItem];
     });
   };
 
